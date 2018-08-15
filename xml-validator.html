@@ -1,0 +1,230 @@
+<html>
+<meta name="viewport" content="width=device-width initial-scale=1.0">
+<head>
+<title>XML Validator</title>
+<style>
+textarea{
+    resize:none;
+    border-radius:10px;
+    box-shadow:1px 1px 7px gray;
+    padding:10px;
+    outline-width:0px;
+}
+input[type='button'] {
+    width:395px;
+    height:25px;
+    border-radius:6px;
+    outline-width:0px;
+    border:none;
+    box-shadow:1px 1px 7px gray;
+    margin-bottom:5px;
+    display:block;
+}
+</style>
+</head>
+<body>
+<input type="button" value="Validate" onclick="validateXML()">
+<textarea rows="20" cols="50" id="rawXML">
+&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;!DOCTYPE students[
+&lt;!ELEMENT students (stu)&gt;
+&lt;!ELEMENT stu (name,roll)&gt;
+&lt;!ELEMENT roll EMPTY&gt;
+&lt;!ELEMENT name (#PCDATA)&gt;
+]&gt;
+&lt;students&gt;
+    &lt;stu&gt;
+        &lt;name&gt;Devashish&lt;/name&gt;
+        &lt;roll&gt;196612&lt;/roll&gt;
+    &lt;/stu&gt;
+    &lt;stu&gt;
+        &lt;name&gt;TestName&lt;/name&gt;
+        &lt;roll&gt;195322&lt;/roll&gt;
+    &lt;/stu&gt;
+&lt;/students&gt;
+</textarea>
+<script>
+var docTypeStarts=-1;
+var docTypeEnds=-1;
+var dtdErrDescr="";
+function showSuccess(elem,msg){
+    elem.style.backgroundColor="green";
+    elem.style.color="white";
+    setTimeout(function(){
+        alert(msg);
+        elem.style.backgroundColor="white";
+        elem.style.color="black";
+    },500);
+}
+function showError(elem,err){
+    elem.style.backgroundColor="red";
+    elem.style.color="white";
+    setTimeout(function(){
+        alert(err);
+        elem.style.backgroundColor="white";
+        elem.style.color="black";
+    },500);
+}
+function validateXML() {
+    var xmlTA=document.querySelector("#rawXML");
+    var rawXML=xmlTA.value.trim();
+    if(!hasXMLDeclaration(rawXML)){
+        showError(xmlTA,"xml doesn't have a declaration or is mis-placed.");
+        return;
+    }
+    if(!isStandAlone(rawXML)){
+        showError(xmlTA,"Can't validate. Currently only supporting standalone xml.\nKindly put standalone as 'yes' and use inline DTD.");
+        return;
+    }
+    if(!hasDoctype(rawXML)){
+        showError(xmlTA,"Can't validate. Internal DTD not provided inside '<!DOCTYPE' and ']>'");
+        return;
+    }
+    var parser=new DOMParser();
+    var parsed=parser.parseFromString(rawXML,"text/xml");
+    var root=parsed.childNodes[1].nodeName;
+    var xml=parsed.childNodes[1];
+    if(!doctypeHasRoot(rawXML,root)){
+        showError(xmlTA,"Can't validate. '<!DOCTYPE "+root+"[' is missing.");
+        return;
+    }
+    var DTD=rawXML.substring(docTypeStarts,docTypeEnds);
+    DTD=DTD.split("\n");
+    var errs=[];
+    for(var i=1;i<DTD.length;i++){
+        var dtdd=DTD[i].trim();
+        if(dtdd!==""){
+            if(!dTDPassed(xml,dtdd)){
+                errs.push(dtdd);
+                if(dtdErrDescr!==""){errs.push(dtdErrDescr);}
+            }
+        }
+    }
+    if(errs.length>0){
+        showError(xmlTA,consoladatedError("XML validation failed on following requirements:",errs));
+        return;
+    }
+    showSuccess(xmlTA,"xml is valid!");
+}
+function dTDPassed(xml,DTD){
+    dtdErrDescr="";
+    DTD=DTD.replace("<!","").replace(">","").replace("("," (").trim();
+    var validationType=DTD.substring(0,DTD.indexOf(" ")).trim();
+    var token=DTD.substring(DTD.indexOf(" ")).trim();
+    if(validationType==="ELEMENT"){
+        if(token.indexOf("(")>0 && token.indexOf(")")>token.indexOf("(")){
+            var tag=token.substring(0,token.indexOf("(")).trim();
+            var tagChilds=token.substring(token.indexOf("("));
+            tagChilds=tagChilds.replace("(","").replace(")","").trim();
+            if(tagChilds!=="#PCDATA") {
+                tagChilds=tagChilds.split(",");
+            }
+            
+            var tagMatch=xml.querySelectorAll(tag);
+            for(var j=0;j<tagMatch.length;j++){
+            	if(tagChilds==="#PCDATA") {
+            		var inner=tagMatch[j].innerHTML.trim();
+            		if(inner==="") {
+                        dtdErrDescr="{'"+tagMatch[j].nodeName+"' tag @index("+j+") must contain some data}";
+                    	return false;
+            		} else if(inner.indexOf("<")>-1 || inner.indexOf(">")>-1) {
+                    	dtdErrDescr="{'"+tagMatch[j].nodeName+"' tag @index("+j+") contains invalid chars}";
+                    	return false;
+                    }
+            	} else {
+            		var tm=tagMatch[j].childNodes;
+                    var nodes={};
+                    for(var i=0;i<tm.length;i++){
+                        if(tm[i].nodeName.indexOf("#")!==0){
+                            nodes[tm[i].nodeName]=tm[i].innerHTML;
+                        }
+                    }
+                    var keys=[];
+                    for(k in nodes){
+                        keys.push(k);
+                    }
+                    if(keys.length>0){
+                        for(var i=0;i<tagChilds.length;i++){
+                            var tc=tagChilds[i].trim();
+                            if(tc!==""){
+                                if(keys.indexOf(tc)===-1){
+                                    dtdErrDescr="{'"+tc+"' tag not found inside '"+tag+"' tag @index("+j+")."+"}";
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+            	}
+            }
+        } else {
+            token=token.split(" ");
+            var tokenFF=[];
+            for(var i=0;i<token.length;i++) {
+            	if(token[i].trim()!=="") {
+            		tokenFF.push(token[i].trim());
+            	}
+            }
+            if(tokenFF.length==2) {
+            	if(tokenFF[1]==="EMPTY") {
+            		var elems=xml.querySelectorAll(tokenFF[0]);
+            		for(var j=0;j<elems.length;j++) {
+            			if(elems[j].innerHTML.trim()!==""){
+            				dtdErrDescr="{'"+tokenFF[0]+"' tag @index("+j+") should be empty}";
+            				return false;
+            			}
+            		}
+            	}
+            }
+        }
+    }
+    return true;
+}
+function consoladatedError(msg,errs){
+    for(var i=0;i<errs.length;i++){
+        msg+="\n"+errs[i];    
+    }
+    return msg;
+}
+function hasXMLDeclaration(rawXML){
+    var indx1=rawXML.indexOf("<?xml ");
+    var indx2=rawXML.indexOf("?>");
+    if(indx1==0 & indx2>0){
+        return true;
+    }
+    return false;
+}
+function isStandAlone(rawXML){
+    var indx=rawXML.indexOf("standalone=\"yes\"");
+    if(indx>5 && indx<50){
+        return true;
+    }
+    return false;
+}
+function hasDoctype(rawXML){
+    var indx1=rawXML.indexOf("?>");
+    var indx2=rawXML.indexOf("<!DOCTYPE");
+    var indx3=rawXML.indexOf("]>");
+    if(indx1>-1 && indx2>indx1 && indx3>indx2){
+        docTypeStarts=indx2;
+        docTypeEnds=indx3;
+        return true;
+    }
+    return false;
+}
+function doctypeHasRoot(rawXML,root){
+    var indx1=rawXML.indexOf("?>");
+    var indx2=rawXML.indexOf("<!DOCTYPE "+root+"[");
+    if(indx2===-1){
+        indx2=rawXML.indexOf("<!DOCTYPE "+root+" [");
+    }
+    var indx3=rawXML.indexOf("]>");
+    if(indx1>-1 && indx2>indx1 && indx3>indx2){
+        docTypeStarts=indx2;
+        docTypeEnds=indx3;
+        return true;
+    }
+    return false;
+}
+</script>
+</body>
+</html>
