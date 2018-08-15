@@ -123,54 +123,56 @@ function dTDPassed(xml,DTD){
             }
             
             var tagMatch=xml.querySelectorAll(tag);
+            if(tagMatch.length===0){
+            	dtdErrDescr="{<"+tag+"> not found}";
+            	return false;
+            }
             for(var j=0;j<tagMatch.length;j++){
             	if(tagChilds==="#PCDATA") {
             		var inner=tagMatch[j].innerHTML.trim();
             		if(inner==="") {
-                        dtdErrDescr="{'"+tagMatch[j].nodeName+"' tag @index("+j+") must contain some data}";
+                        dtdErrDescr="{<"+tagMatch[j].nodeName+"> @index("+j+") must contain some data}";
                     	return false;
             		} else if(inner.indexOf("<")>-1 || inner.indexOf(">")>-1) {
-                    	dtdErrDescr="{'"+tagMatch[j].nodeName+"' tag @index("+j+") contains invalid chars}";
+                    	dtdErrDescr="{<"+tagMatch[j].nodeName+"> @index("+j+") contains invalid chars}";
                     	return false;
                     }
             	} else {
-            		var tm=tagMatch[j].childNodes;
-                    var keys=[];
-                    var nodes={};
-                    for(var i=0;i<tm.length;i++){
-                        if(tm[i].nodeName.indexOf("#")!==0) {
-                            if(nodes[tm[i].nodeName]===undefined) {
-                            	nodes[tm[i].nodeName]=1;
-                            } else {
-                            	nodes[tm[i].nodeName]+=1;
-                            }
+            		var childNodes={};
+                    for(var ii=0;ii<tagMatch[j].childNodes.length;ii++){
+                    	var tmp=tagMatch[j].childNodes[ii].nodeName.trim();
+                        if(tmp.indexOf("#")!==0 && tmp!==""){
+                           	childNodes[tmp]="";
+                   	    }
+                   	}
+            		for(var i=0;i<tagChilds.length;i++){
+                        var tc=tagChilds[i].trim();
+                        if(tc!==""){
+                         	var specialChar="";
+                           	if(tc[tc.length-1]==="+" || tc[tc.length-1]==="*" || tc[tc.length-1]==="?"){
+                           		specialChar=tc[tc.length-1];
+                           		tc=tc.substring(0,tc.length-1);
+                           	}
+                           	childNodes[tc]="done";
+                           	var tm=tagMatch[j].querySelectorAll(tc);
+                                
+                           	if(specialChar==="" && tm.length!==1){
+                           		dtdErrDescr="{<"+tc+"> can't appear more than once ["+tm.length+" copies found]}";
+                                return false;
+                           	} else if(specialChar==="+" && tm.length<1){
+                           		dtdErrDescr="{Alteast one copy of <"+tc+"> is required. None found!}";
+                                return false;
+                           	} else if(specialChar==="?" && tm.length>1){
+                           		dtdErrDescr="{Either one or no copy of <"+tc+"> is required. "+tm.length+" copies found!}";
+                                return false;
+                           	}
                         }
                     }
-                    for(k in nodes) {
-                    	keys.push(k);
-                    }
-                    if(keys.length>0){
-                        for(var i=0;i<tagChilds.length;i++){
-                            var tc=tagChilds[i].trim();
-                            if(tc!==""){
-                            	var specialChar="";
-                            	if(tc[tc.length-1]==="+" || tc[tc.length-1]==="*" || tc[tc.length-1]==="?"){
-                            		specialChar=tc[tc.length-1];
-                            		tc=tc.substring(0,tc.length-1);
-                            	}
-                            	if(keys.indexOf(tc)===-1){
-                            		if(specialChar!=="*" && specialChar!=="?"){
-                                        dtdErrDescr="{'"+tc+"' tag not found inside '"+tag+"' tag @index("+j+")."+"}";
-                                        return false;
-                                    }
-                                } else {
-                                	if(specialChar==="" && nodes[tc]!==1){
-                                        dtdErrDescr="{'"+tc+"' tag can't appear more than once ["+nodes[tc]+" copies found]}";
-                                        return false;
-                              	    }
-                                } 
-                            }
-                        }
+                    for(k in childNodes){
+                    	if(childNodes[k]===""){
+                    		dtdErrDescr="{<"+k+"> is not expected inside <"+tag+"> @index("+j+")}";
+                    		return false;
+                    	}
                     }
             	}
             }
@@ -183,15 +185,27 @@ function dTDPassed(xml,DTD){
             	}
             }
             if(tokenFF.length==2) {
+            	var elems=xml.querySelectorAll(tokenFF[0]);
+            	if(elems.length===0){
+           			dtdErrDescr="{<"+tokenFF[0]+"> not found}";
+           			return false;
+                }
             	if(tokenFF[1]==="EMPTY") {
-            		var elems=xml.querySelectorAll(tokenFF[0]);
             		for(var j=0;j<elems.length;j++) {
             			if(elems[j].innerHTML.trim()!==""){
-            				dtdErrDescr="{'"+tokenFF[0]+"' tag @index("+j+") should be empty}";
+            				dtdErrDescr="{<"+tokenFF[0]+"> @index("+j+") should be empty}";
             				return false;
             			}
             		}
+            	} else if(tokenFF[1]==="ANY") {
+
+            	} else {
+            		dtdErrDescr="{"+tokenFF[1]+" is not a valid validator keyword.}";
+            		return false;
             	}
+            } else {
+            	dtdErrDescr="{unable to parse validator.}";
+            	return false;
             }
         }
     }
