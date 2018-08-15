@@ -27,7 +27,7 @@ input[type='button'] {
 <textarea rows="20" cols="50" id="rawXML">
 &lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
 &lt;!DOCTYPE students[
-&lt;!ELEMENT students (stu)&gt;
+&lt;!ELEMENT students (stu+)&gt;
 &lt;!ELEMENT stu (name,roll)&gt;
 &lt;!ELEMENT roll EMPTY&gt;
 &lt;!ELEMENT name (#PCDATA)&gt;
@@ -83,7 +83,7 @@ function validateXML() {
     var parser=new DOMParser();
     var parsed=parser.parseFromString(rawXML,"text/xml");
     var root=parsed.childNodes[1].nodeName;
-    var xml=parsed.childNodes[1];
+    var xml=parsed;
     if(!doctypeHasRoot(rawXML,root)){
         showError(xmlTA,"Can't validate. '<!DOCTYPE "+root+"[' is missing.");
         return;
@@ -112,7 +112,9 @@ function dTDPassed(xml,DTD){
     var validationType=DTD.substring(0,DTD.indexOf(" ")).trim();
     var token=DTD.substring(DTD.indexOf(" ")).trim();
     if(validationType==="ELEMENT"){
-        if(token.indexOf("(")>0 && token.indexOf(")")>token.indexOf("(")){
+    	if(token.indexOf("|")>-1){
+            dtdErrDescr="{'|' character is not yet supported in this application}";
+        } else if(token.indexOf("(")>0 && token.indexOf(")")>token.indexOf("(")){
             var tag=token.substring(0,token.indexOf("(")).trim();
             var tagChilds=token.substring(token.indexOf("("));
             tagChilds=tagChilds.replace("(","").replace(")","").trim();
@@ -133,24 +135,40 @@ function dTDPassed(xml,DTD){
                     }
             	} else {
             		var tm=tagMatch[j].childNodes;
+                    var keys=[];
                     var nodes={};
                     for(var i=0;i<tm.length;i++){
-                        if(tm[i].nodeName.indexOf("#")!==0){
-                            nodes[tm[i].nodeName]=tm[i].innerHTML;
+                        if(tm[i].nodeName.indexOf("#")!==0) {
+                            if(nodes[tm[i].nodeName]===undefined) {
+                            	nodes[tm[i].nodeName]=1;
+                            } else {
+                            	nodes[tm[i].nodeName]+=1;
+                            }
                         }
                     }
-                    var keys=[];
-                    for(k in nodes){
-                        keys.push(k);
+                    for(k in nodes) {
+                    	keys.push(k);
                     }
                     if(keys.length>0){
                         for(var i=0;i<tagChilds.length;i++){
                             var tc=tagChilds[i].trim();
                             if(tc!==""){
-                                if(keys.indexOf(tc)===-1){
-                                    dtdErrDescr="{'"+tc+"' tag not found inside '"+tag+"' tag @index("+j+")."+"}";
-                                    return false;
-                                }
+                            	var specialChar="";
+                            	if(tc[tc.length-1]==="+" || tc[tc.length-1]==="*" || tc[tc.length-1]==="?"){
+                            		specialChar=tc[tc.length-1];
+                            		tc=tc.substring(0,tc.length-1);
+                            	}
+                            	if(keys.indexOf(tc)===-1){
+                            		if(specialChar!=="*" && specialChar!=="?"){
+                                        dtdErrDescr="{'"+tc+"' tag not found inside '"+tag+"' tag @index("+j+")."+"}";
+                                        return false;
+                                    }
+                                } else {
+                                	if(specialChar==="" && nodes[tc]!==1){
+                                        dtdErrDescr="{'"+tc+"' tag can't appear more than once ["+nodes[tc]+" copies found]}";
+                                        return false;
+                              	    }
+                                } 
                             }
                         }
                     }
